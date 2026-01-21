@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<map version="1.10" tiledversion="1.11.2" orientation="orthogonal" renderorder="right-down" width="30" height="10" tilewidth="70" tileheight="70" infinite="0" nextlayerid="5" nextobjectid="1">
+ <tileset firstgid="1" source="../../../../Downloads/fon.tsx"/>
+ <layer id="1" name="walls" width="30" height="10">
+  <data encoding="base64" compression="zlib">
+   eJwzZGBgUCaARYHYkMrqyhgIg4xRdaPqaKCO2mAk2ts4QBgA6agi1Q==
+  </data>
+ </layer>
+ <layer id="2" name="walls behind" width="30" height="10">
+  <data encoding="base64" compression="zlib">
+   eJxjYBg4kMqIH4+qG1VHC3XUxiPV3oEAAJerUUk=
+  </data>
+ </layer>
+ <layer id="3" name="objects" width="30" height="10">
+  <data encoding="base64" compression="zlib">
+   eJxjYBgFo4B2QJpxYMRGwfAEAGhpAKk=
+  </data>
+ </layer>
+ <layer id="4" name="collision" width="30" height="10" visible="0">
+  <data encoding="base64" compression="zlib">
+   eJzTZ2Rg0B8gTAiMqhtVRwt11AYj1d6BwAD95BIB
+  </data>
+ </layer>
+</map>
