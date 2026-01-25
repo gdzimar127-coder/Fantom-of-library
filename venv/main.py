@@ -113,14 +113,18 @@ class GameView(arcade.View):
         self.wall_list = self.tile_map.sprite_lists["walls"]
         self.collision_list = self.tile_map.sprite_lists["collision"]
 
-        self.player_texture = arcade.load_texture('ghost.png')
+        # Загружаем ОБЕ текстуры
+        self.player_texture_right = arcade.load_texture('ghost.png')   # вправо
+        self.player_texture_left = arcade.load_texture('ghost_l.png')  # влево
+
         self.world_camera = arcade.camera.Camera2D()
 
         self.map_width = self.tile_map.width * self.tile_map.tile_width
         self.map_height = self.tile_map.height * self.tile_map.tile_height
 
     def setup(self):
-        self.player = arcade.Sprite(self.player_texture, scale=0.3)
+        # Создаём спрайт с текстурой "вправо" по умолчанию
+        self.player = arcade.Sprite(self.player_texture_right, scale=0.3)
         x = 7 * self.cell_size + self.cell_size // 2
         y = 5 * self.cell_size + self.cell_size // 2
         self.player.center_x = x
@@ -162,17 +166,20 @@ class GameView(arcade.View):
             self.player.change_y = -SPEED
         elif key == arcade.key.A:
             self.player.change_x = -SPEED
+            self.player.texture = self.player_texture_left   # ← влево
         elif key == arcade.key.D:
             self.player.change_x = SPEED
+            self.player.texture = self.player_texture_right  # ← вправо
         elif key == arcade.key.ESCAPE:
             pause = PauseView(self)
             self.window.show_view(pause)
 
     def on_key_release(self, key, modifiers):
-        if key in [arcade.key.W, arcade.key.S]:
+        if key in (arcade.key.W, arcade.key.S):
             self.player.change_y = 0
-        if key in [arcade.key.A, arcade.key.D]:
+        if key in (arcade.key.A, arcade.key.D):
             self.player.change_x = 0
+            # НЕ меняем текстуру — остаёмся в последнем направлении
 
 
 class MainMenu(arcade.View):
