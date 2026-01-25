@@ -13,16 +13,20 @@ class GridGame(arcade.Window):
         self.cell_size = 64
         self.all_sprites = arcade.SpriteList()
         map_name = "library.tmx"
-        tile_map = arcade.load_tilemap(map_name, scaling=1)
-        self.object_list = tile_map.sprite_lists["objects"]
-        self.walls_behind_list = tile_map.sprite_lists["walls behind"]
-        self.wall_list = tile_map.sprite_lists["walls"]
-        # САМЫЙ ГЛАВНЫЙ СЛОЙ: "Collision" — наши стены и платформы для физики!
-        self.collision_list = tile_map.sprite_lists["collision"]
-        # Загружаем текстуры из встроенных ресурсов
+        self.tile_map = arcade.load_tilemap(map_name, scaling=1)  # Сохраняем tile_map!
+
+        self.object_list = self.tile_map.sprite_lists["objects"]
+        self.walls_behind_list = self.tile_map.sprite_lists["walls behind"]
+        self.wall_list = self.tile_map.sprite_lists["walls"]
+        self.collision_list = self.tile_map.sprite_lists["collision"]
+
         self.player_texture = arcade.load_texture('ghost.png')
-        self.world_camera = arcade.camera.Camera2D()  # Камера для игрового мира
+        self.world_camera = arcade.camera.Camera2D()
         self.gui_camera = arcade.camera.Camera2D()
+
+        # Границы карты в пикселях
+        self.map_width = self.tile_map.width * self.tile_map.tile_width
+        self.map_height = self.tile_map.height * self.tile_map.tile_height
 
     def setup(self):
         self.player = arcade.Sprite(self.player_texture, scale=0.3)
@@ -38,8 +42,7 @@ class GridGame(arcade.Window):
 
     def on_draw(self):
         self.clear()
-        self.world_camera.use()  # Активируем камеру мира
-        # Рисуем игровые объекты...
+        self.world_camera.use()
         self.walls_behind_list.draw()
         self.object_list.draw()
         self.wall_list.draw()
@@ -48,25 +51,39 @@ class GridGame(arcade.Window):
 
     def on_update(self, delta_time: float):
         self.physics_engine.update()
-        position = (
-            self.player.center_x,
-            self.player.center_y
-        )
-        self.world_camera.position = arcade.math.lerp_2d(  # Изменяем позицию камеры
-            self.world_camera.position,
-            position,
-            CAMERA_LERP,  # Плавность следования камеры
-        )
+
+        # Желаемая позиция камеры — за игроком
+        target_x = self.player.center_x
+        target_y = self.player.center_y
+
+        # Плавное перемещение
+        cam_x, cam_y = self.world_camera.position
+        new_x = arcade.math.lerp(cam_x, target_x, CAMERA_LERP)
+        new_y = arcade.math.lerp(cam_y, target_y, CAMERA_LERP)
+
+        # Ограничение по краям карты
+        half_viewport_width = self.world_camera.viewport_width / 2
+        half_viewport_height = self.world_camera.viewport_height / 2
+
+        # Минимум: чтобы не уйти левее/ниже начала карты
+        new_x = max(half_viewport_width, new_x)
+        new_y = max(half_viewport_height, new_y)
+
+        # Максимум: чтобы не уйти правее/выше конца карты
+        new_x = min(self.map_width - half_viewport_width, new_x)
+        new_y = min(self.map_height - half_viewport_height, new_y)
+
+        self.world_camera.position = (new_x, new_y)
 
     def on_key_press(self, key, modifiers):
-         if key == arcade.key.W:
-             self.player.change_y = SPEED
-         if key == arcade.key.S:
-             self.player.change_y = -SPEED
-         if key == arcade.key.A:
-             self.player.change_x = -SPEED
-         if key == arcade.key.D:
-             self.player.change_x = SPEED
+        if key == arcade.key.W:
+            self.player.change_y = SPEED
+        elif key == arcade.key.S:
+            self.player.change_y = -SPEED
+        elif key == arcade.key.A:
+            self.player.change_x = -SPEED
+        elif key == arcade.key.D:
+            self.player.change_x = SPEED
 
     def on_key_release(self, key, modifiers):
         if key in [arcade.key.W, arcade.key.S]:
@@ -75,14 +92,9 @@ class GridGame(arcade.Window):
             self.player.change_x = 0
 
 
-def setup_game(width=960, height=640, title="Fantom of library"):
-    game = GridGame(width, height, title)
-    game.setup()
-    return game
-
-
 def main():
-    setup_game(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
+    game = GridGame(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
+    game.setup()
     arcade.run()
 
 
