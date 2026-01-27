@@ -116,7 +116,9 @@ class GameView(arcade.View):
         self.target_bookshelf = None
         self.visitor = None
         self.current_table = None
+        self.score = 0  # ← СЧЁТЧИК ОЧКОВ
 
+        self.pulse_time = 0.0
         self.visitor_spawn_timer = random.uniform(5.0, 15.0)
         self.quest_timer = None
         self.quest_delay = None
@@ -197,34 +199,66 @@ class GameView(arcade.View):
 
         # Подсветка шкафа
         if self.quest_active and self.target_bookshelf and not self.has_book:
+            pulse = math.sin(self.pulse_time * 6) * 0.3 + 0.7
+            radius = 25 + 10 * pulse
             arcade.draw_circle_filled(
                 self.target_bookshelf.center_x,
                 self.target_bookshelf.center_y + 30,
-                20, arcade.color.YELLOW
+                radius, (255, 255, 0, int(100 * pulse))
+            )
+            arcade.draw_circle_outline(
+                self.target_bookshelf.center_x,
+                self.target_bookshelf.center_y + 30,
+                radius, arcade.color.YELLOW, 3
             )
 
-        # Инвентарь — книга в правом нижнем углу
+        # Инвентарь — книга
         if self.has_book:
             self.window.default_camera.use()
             book_x = SCREEN_WIDTH - 60
             book_y = 60
             rect = arcade.rect.XYWH(book_x, book_y, 50, 60)
-            arcade.draw_texture_rect(self.book_texture, rect)  # ← ПРАВИЛЬНЫЙ ПОРЯДОК!
+            arcade.draw_texture_rect(self.book_texture, rect)
 
-        # Задание
+        # Меню заданий
         self.window.default_camera.use()
-        if self.quest_active and not self.has_book:
-            arcade.draw_text(
-                "Посетителю нужна книга! Подойдите к подсвеченному шкафу и нажмите E",
-                20, SCREEN_HEIGHT - 40,
-                arcade.color.WHITE, 16, bold=True
+        if self.quest_active:
+            panel_width = 400
+            panel_height = 120
+            panel_x = 20
+            panel_y = SCREEN_HEIGHT - panel_height - 20
+
+            arcade.draw_lrbt_rectangle_filled(
+                panel_x, panel_x + panel_width,
+                panel_y, panel_y + panel_height,
+                (20, 20, 40, 220)
             )
-        elif self.has_book:
-            arcade.draw_text(
-                "Отнесите книгу посетителю и нажмите E",
-                20, SCREEN_HEIGHT - 40,
-                arcade.color.GREEN, 16, bold=True
+            arcade.draw_lrbt_rectangle_outline(
+                panel_x, panel_x + panel_width,
+                panel_y, panel_y + panel_height,
+                arcade.color.GOLD, 2
             )
+            arcade.draw_text(
+                "АКТИВНЫЕ ЗАДАНИЯ",
+                panel_x + 20, panel_y + panel_height - 30,
+                arcade.color.GOLD, 18, bold=True
+            )
+            task = "• Найти книгу для посетителя" if not self.has_book else "• Отнести книгу посетителю"
+            arcade.draw_text(
+                task,
+                panel_x + 30, panel_y + panel_height - 70,
+                arcade.color.WHITE, 14
+            )
+
+        # Счётчик очков — ПРАВЫЙ ВЕРХНИЙ УГОЛ
+        arcade.draw_text(
+            f"Очки: {self.score}",
+            SCREEN_WIDTH - 20,
+            SCREEN_HEIGHT - 40,
+            arcade.color.GOLD,
+            16,
+            anchor_x="right"
+        )
 
     def on_update(self, delta_time: float):
         self.physics_engine.update()
@@ -260,6 +294,8 @@ class GameView(arcade.View):
             if self.quest_timer >= self.quest_delay:
                 self.start_quest()
                 self.quest_delay = None
+
+        self.pulse_time += delta_time
 
     def on_key_press(self, key, modifiers):
         if key == arcade.key.W:
@@ -303,9 +339,24 @@ class GameView(arcade.View):
                 self.player.center_y - self.visitor.center_y
             )
             if dist < INTERACTION_DISTANCE:
-                self.has_book = False
-                self.quest_active = False
-                self.target_bookshelf = None
+                # Начисление очков
+                self.score += 10
+
+                # Решаем: уходит или остаётся?
+                if random.random() < 0.5:  # 50% шанс уйти
+                    if self.visitor in self.all_sprites:
+                        self.all_sprites.remove(self.visitor)
+                    self.visitor = None
+                else:
+                    # Остаётся и получает новое задание позже
+                    self.quest_active = False
+                    self.has_book = False
+                    self.target_bookshelf = None
+                    self.quest_delay = random.uniform(3.0, 8.0)
+                    self.quest_timer = 0.0
+                    return  # не запускаем таймер нового посетителя
+
+                # Запускаем таймер для следующего посетителя
                 self.visitor_spawn_timer = random.uniform(10.0, 20.0)
 
     def on_close(self):
