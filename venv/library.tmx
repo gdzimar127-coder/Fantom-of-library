@@ -3,7 +3,7 @@
  <tileset firstgid="1" source="../../../../Downloads/fon.tsx"/>
  <layer id="1" name="walls" width="30" height="10">
   <data encoding="base64" compression="zlib">
-   eJwzZGBgUCaARYHYkMrqyhgIg4xRdaPqaKCO2mAk2ts4QBgA6agi1Q==
+   eJwzZGBgUCaARYHYkMrqyhgIg4xRdaPqaKCO2gBkrxbjwNjbPUD2Ng4QBgCUziKg
   </data>
  </layer>
  <layer id="2" name="walls behind" width="30" height="10">

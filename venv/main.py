@@ -11,6 +11,8 @@ SCREEN_TITLE = "Fantom of library"
 BUTTON_WIDTH = 300
 BUTTON_HEIGHT = 80
 
+VISITOR_SCALE = 5
+
 
 class Button:
     """Простая кнопка без использования спрайтов"""
@@ -68,21 +70,12 @@ class PauseView(arcade.View):
         ]
 
     def on_draw(self):
-        # Рисуем игру (она использует свою камеру)
         self.game_view.on_draw()
-
-        # Переключаемся на экранную (UI) систему координат
         self.window.default_camera.use()
-
-        # Полупрозрачный оверлей (затемнение)
         rect = arcade.rect.XYWH(SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2, SCREEN_WIDTH, SCREEN_HEIGHT)
-        arcade.draw_rect_filled(rect, (0, 0, 0, 150))  # RGBA: чёрный с alpha=150
-
-        # Рисуем кнопки
+        arcade.draw_rect_filled(rect, (0, 0, 0, 150))
         for button in self.buttons:
             button.draw()
-
-        # Заголовок
         arcade.draw_text("ПАУЗА", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 100,
                          arcade.color.WHITE, font_size=48, anchor_x="center")
 
@@ -92,8 +85,8 @@ class PauseView(arcade.View):
                 if btn.text == "Продолжить":
                     self.window.show_view(self.game_view)
                 elif btn.text == "В главное меню":
-                    from main import MainMenu
-                    self.window.show_view(MainMenu())
+                    main_menu = MainMenu()
+                    self.window.show_view(main_menu)
 
     def on_key_press(self, key, modifiers):
         if key == arcade.key.ESCAPE:
@@ -104,32 +97,36 @@ class GameView(arcade.View):
     def __init__(self):
         super().__init__()
         self.cell_size = 64
-        self.all_sprites = arcade.SpriteList()
         map_name = "library.tmx"
         self.tile_map = arcade.load_tilemap(map_name, scaling=1)
 
-        self.object_list = self.tile_map.sprite_lists["objects"]
-        self.walls_behind_list = self.tile_map.sprite_lists["walls behind"]
-        self.wall_list = self.tile_map.sprite_lists["walls"]
-        self.collision_list = self.tile_map.sprite_lists["collision"]
+        self.walls_behind_list = self.tile_map.sprite_lists.get("walls behind", arcade.SpriteList())
+        self.wall_list = self.tile_map.sprite_lists.get("walls", arcade.SpriteList())
+        self.object_list = self.tile_map.sprite_lists.get("objects", arcade.SpriteList())
+        self.collision_list = self.tile_map.sprite_lists.get("collision", arcade.SpriteList())
 
-        # Загружаем ОБЕ текстуры
-        self.player_texture_right = arcade.load_texture('ghost.png')   # вправо
-        self.player_texture_left = arcade.load_texture('ghost_l.png')  # влево
+        self.all_sprites = arcade.SpriteList()
+
+        self.player_texture_right = arcade.load_texture('ghost.png')
+        self.player_texture_left = arcade.load_texture('ghost_l.png')
+        self.visitor_texture = arcade.load_texture('visitor_1.png')
 
         self.world_camera = arcade.camera.Camera2D()
-
         self.map_width = self.tile_map.width * self.tile_map.tile_width
         self.map_height = self.tile_map.height * self.tile_map.tile_height
 
     def setup(self):
-        # Создаём спрайт с текстурой "вправо" по умолчанию
-        self.player = arcade.Sprite(self.player_texture_right, scale=0.3)
-        x = 7 * self.cell_size + self.cell_size // 2
-        y = 5 * self.cell_size + self.cell_size // 2
-        self.player.center_x = x
-        self.player.center_y = y
+        # Игрок
+        self.player = arcade.Sprite(self.player_texture_right, scale=0.35)
+        self.player.center_x = 7 * self.cell_size + self.cell_size // 2
+        self.player.center_y = 5 * self.cell_size + self.cell_size // 2
         self.all_sprites.append(self.player)
+
+        # Посетитель — с увеличенным масштабом
+        self.visitor = arcade.Sprite(self.visitor_texture, scale=VISITOR_SCALE)
+        self.visitor.center_x = 9 * self.cell_size + self.cell_size // 2
+        self.visitor.center_y = 5 * self.cell_size + self.cell_size // 2
+        self.all_sprites.append(self.visitor)
 
         self.physics_engine = arcade.PhysicsEngineSimple(self.player, self.collision_list)
 
@@ -137,17 +134,16 @@ class GameView(arcade.View):
         self.clear()
         self.world_camera.use()
         self.walls_behind_list.draw()
-        self.object_list.draw()
         self.wall_list.draw()
+        self.object_list.draw()
         self.all_sprites.draw()
 
     def on_update(self, delta_time: float):
         self.physics_engine.update()
 
+        cam_x, cam_y = self.world_camera.position
         target_x = self.player.center_x
         target_y = self.player.center_y
-
-        cam_x, cam_y = self.world_camera.position
         new_x = arcade.math.lerp(cam_x, target_x, CAMERA_LERP)
         new_y = arcade.math.lerp(cam_y, target_y, CAMERA_LERP)
 
@@ -166,10 +162,10 @@ class GameView(arcade.View):
             self.player.change_y = -SPEED
         elif key == arcade.key.A:
             self.player.change_x = -SPEED
-            self.player.texture = self.player_texture_left   # ← влево
+            self.player.texture = self.player_texture_left
         elif key == arcade.key.D:
             self.player.change_x = SPEED
-            self.player.texture = self.player_texture_right  # ← вправо
+            self.player.texture = self.player_texture_right
         elif key == arcade.key.ESCAPE:
             pause = PauseView(self)
             self.window.show_view(pause)
@@ -179,7 +175,6 @@ class GameView(arcade.View):
             self.player.change_y = 0
         if key in (arcade.key.A, arcade.key.D):
             self.player.change_x = 0
-            # НЕ меняем текстуру — остаёмся в последнем направлении
 
 
 class MainMenu(arcade.View):
@@ -192,7 +187,6 @@ class MainMenu(arcade.View):
 
     def on_draw(self):
         self.clear(arcade.color.DARK_BLUE)
-        # В главном меню мы уже в default-камере — ничего переключать не нужно
         arcade.draw_text("FANTOM OF LIBRARY", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 100,
                          arcade.color.WHITE, font_size=50, anchor_x="center")
         for button in self.buttons:
