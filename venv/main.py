@@ -1,6 +1,7 @@
 import arcade
 import random
 import math
+import time
 
 # Константы
 SPEED = 4
@@ -16,6 +17,7 @@ PLAYER_SCALE = 0.35
 TABLE_SCALE = 0.3
 BOOKSHELF_SCALE = 0.25
 BOOK_SCALE = 0.5
+FLOATING_BOOK_SCALE = 0.1
 
 INTERACTION_DISTANCE = 80
 
@@ -111,12 +113,19 @@ class GameView(arcade.View):
         self.map_width = self.tile_map.width * self.tile_map.tile_width
         self.map_height = self.tile_map.height * self.tile_map.tile_height
 
-        self.has_book = False
+        # Мана
+        self.mana = 100.0
+        self.max_mana = 100.0
+        self.mana_regen_rate = 1.0
+
+        # Квест и посетители
         self.quest_active = False
         self.target_bookshelf = None
         self.visitor = None
         self.current_table = None
-        self.score = 0  # ← СЧЁТЧИК ОЧКОВ
+        self.score = 0
+
+        self.floating_books = arcade.SpriteList()
 
         self.pulse_time = 0.0
         self.visitor_spawn_timer = random.uniform(5.0, 15.0)
@@ -170,20 +179,16 @@ class GameView(arcade.View):
         self.visitor = arcade.Sprite(self.visitor_texture, scale=VISITOR_SCALE)
         self.visitor.center_x = entrance_x
         self.visitor.center_y = entrance_y
-
-        if len(self.tables) == 0:
-            return
+        self.visitor.state = "arriving"
         self.current_table = random.choice(self.tables)
         self.visitor.target_x = self.current_table.center_x
-        self.visitor.target_y = entrance_y
-        self.visitor.arrived = False
 
         self.object_list.append(self.visitor)
         self.quest_delay = random.uniform(3.0, 8.0)
         self.quest_timer = 0.0
 
     def start_quest(self):
-        if self.quest_active or self.visitor is None:
+        if self.quest_active or self.visitor is None or self.visitor.state != "waiting":
             return
         self.quest_active = True
         self.target_bookshelf = random.choice(self.bookshelves)
@@ -196,9 +201,10 @@ class GameView(arcade.View):
         self.wall_list.draw()
         self.object_list.draw()
         self.all_sprites.draw()
+        self.floating_books.draw()
 
-        # Подсветка шкафа
-        if self.quest_active and self.target_bookshelf and not self.has_book:
+        # Подсветка целевого шкафа
+        if self.quest_active and self.target_bookshelf:
             pulse = math.sin(self.pulse_time * 6) * 0.3 + 0.7
             radius = 25 + 10 * pulse
             arcade.draw_circle_filled(
@@ -212,15 +218,7 @@ class GameView(arcade.View):
                 radius, arcade.color.YELLOW, 3
             )
 
-        # Инвентарь — книга
-        if self.has_book:
-            self.window.default_camera.use()
-            book_x = SCREEN_WIDTH - 60
-            book_y = 60
-            rect = arcade.rect.XYWH(book_x, book_y, 50, 60)
-            arcade.draw_texture_rect(self.book_texture, rect)
-
-        # Меню заданий
+        # UI: задания
         self.window.default_camera.use()
         if self.quest_active:
             panel_width = 400
@@ -243,14 +241,13 @@ class GameView(arcade.View):
                 panel_x + 20, panel_y + panel_height - 30,
                 arcade.color.GOLD, 18, bold=True
             )
-            task = "• Найти книгу для посетителя" if not self.has_book else "• Отнести книгу посетителю"
             arcade.draw_text(
-                task,
+                "• Урони книгу из шкафа (E)",  # ← ИЗМЕНЕНО
                 panel_x + 30, panel_y + panel_height - 70,
                 arcade.color.WHITE, 14
             )
 
-        # Счётчик очков — ПРАВЫЙ ВЕРХНИЙ УГОЛ
+        # Счётчик очков
         arcade.draw_text(
             f"Очки: {self.score}",
             SCREEN_WIDTH - 20,
@@ -259,6 +256,26 @@ class GameView(arcade.View):
             16,
             anchor_x="right"
         )
+
+        # Шкала маны — ПРОЗРАЧНЫЙ ФОН
+        mana_bar_width = 200
+        mana_bar_height = 20
+        mana_bar_x = 20
+        mana_bar_y = 20
+
+        fill_width = (self.mana / self.max_mana) * mana_bar_width
+        if fill_width > 0:
+            arcade.draw_lrbt_rectangle_filled(
+                mana_bar_x, mana_bar_x + fill_width,
+                mana_bar_y, mana_bar_y + mana_bar_height,
+                arcade.color.BLUE
+            )
+        arcade.draw_lrbt_rectangle_outline(
+            mana_bar_x, mana_bar_x + mana_bar_width,
+            mana_bar_y, mana_bar_y + mana_bar_height,
+            arcade.color.WHITE, 2
+        )
+        arcade.draw_text("Мана", mana_bar_x + mana_bar_width + 10, mana_bar_y + 5, arcade.color.WHITE, 14)
 
     def on_update(self, delta_time: float):
         self.physics_engine.update()
@@ -275,25 +292,91 @@ class GameView(arcade.View):
         new_y = max(half_h, min(self.map_height - half_h, new_y))
         self.world_camera.position = (new_x, new_y)
 
+        # Восстановление маны
+        self.mana = min(self.max_mana, self.mana + self.mana_regen_rate * delta_time)
+
+        # Спавн посетителя
         self.visitor_spawn_timer -= delta_time
         if self.visitor_spawn_timer <= 0 and self.visitor is None:
             self.spawn_visitor()
 
-        # Движение посетителя — ТОЛЬКО ПО ГОРИЗОНТАЛИ
-        if self.visitor and not self.visitor.arrived:
-            dx = self.visitor.target_x - self.visitor.center_x
-            dist = abs(dx)
-            if dist < 5:
-                self.visitor.arrived = True
-            else:
-                visitor_speed = 100
-                self.visitor.center_x += math.copysign(visitor_speed * delta_time, dx)
+        # Движение и логика посетителя
+        if self.visitor:
+            # Фиксируем Y на уровне пола
+            self.visitor.center_y = 118
 
-        if self.visitor and self.visitor.arrived and self.quest_delay is not None:
-            self.quest_timer += delta_time
-            if self.quest_timer >= self.quest_delay:
-                self.start_quest()
-                self.quest_delay = None
+            if self.visitor.state == "arriving":
+                dx = self.visitor.target_x - self.visitor.center_x
+                if abs(dx) < 5:
+                    self.visitor.state = "waiting"
+                else:
+                    self.visitor.center_x += math.copysign(100 * delta_time, dx)
+
+            elif self.visitor.state == "waiting":
+                # Проверяем: можно ли взять книгу прямо сейчас?
+                book_to_take = None
+                for book in self.floating_books:
+                    dist = math.hypot(
+                        self.visitor.center_x - book.center_x,
+                        self.visitor.center_y - book.center_y
+                    )
+                    if dist < INTERACTION_DISTANCE:
+                        book_to_take = book
+                        break
+
+                if book_to_take:
+                    book_to_take.remove_from_sprite_lists()
+                    self.score += 10
+                    self.visitor.state = "returning_to_table"
+                    self.visitor.target_x = self.current_table.center_x
+                else:
+                    # Ищем ближайшую книгу и идём к ней
+                    closest_book = None
+                    min_dx = float('inf')
+                    for book in self.floating_books:
+                        dx = abs(self.visitor.center_x - book.center_x)
+                        if dx < min_dx:
+                            min_dx = dx
+                            closest_book = book
+
+                    if closest_book and min_dx > 10:
+                        # Двигаемся к книге
+                        direction = 1 if closest_book.center_x > self.visitor.center_x else -1
+                        self.visitor.center_x += direction * 100 * delta_time
+                    else:
+                        # Нет книг — ждём квест
+                        if self.quest_delay is not None:
+                            self.quest_timer += delta_time
+                            if self.quest_timer >= self.quest_delay:
+                                self.start_quest()
+                                self.quest_delay = None
+
+            elif self.visitor.state == "returning_to_table":
+                dx = self.visitor.target_x - self.visitor.center_x
+                if abs(dx) < 5:
+                    self.visitor.state = "reading"
+                    self.visitor.read_end_time = time.time() + 15
+                else:
+                    self.visitor.center_x += math.copysign(100 * delta_time, dx)
+
+            elif self.visitor.state == "reading":
+                if time.time() >= self.visitor.read_end_time:
+                    if random.random() < 0.5:
+                        self.visitor.state = "leaving"
+                        self.visitor.target_x = 50
+                    else:
+                        self.visitor.state = "waiting"
+                        self.quest_delay = random.uniform(5.0, 10.0)
+                        self.quest_timer = 0.0
+
+            elif self.visitor.state == "leaving":
+                dx = self.visitor.target_x - self.visitor.center_x
+                if abs(dx) < 5:
+                    self.visitor.remove_from_sprite_lists()
+                    self.visitor = None
+                    self.visitor_spawn_timer = random.uniform(10.0, 20.0)
+                else:
+                    self.visitor.center_x += math.copysign(100 * delta_time, dx)
 
         self.pulse_time += delta_time
 
@@ -321,43 +404,22 @@ class GameView(arcade.View):
             self.player.change_x = 0
 
     def handle_interaction(self):
-        if not self.quest_active:
+        if not self.quest_active or self.target_bookshelf is None:
             return
 
-        if self.quest_active and not self.has_book and self.target_bookshelf:
-            dist = math.hypot(
-                self.player.center_x - self.target_bookshelf.center_x,
-                self.player.center_y - self.target_bookshelf.center_y
-            )
-            if dist < INTERACTION_DISTANCE:
-                self.has_book = True
-                return
+        dist_to_shelf = math.hypot(
+            self.player.center_x - self.target_bookshelf.center_x,
+            self.player.center_y - self.target_bookshelf.center_y
+        )
 
-        if self.has_book and self.visitor:
-            dist = math.hypot(
-                self.player.center_x - self.visitor.center_x,
-                self.player.center_y - self.visitor.center_y
-            )
-            if dist < INTERACTION_DISTANCE:
-                # Начисление очков
-                self.score += 10
-
-                # Решаем: уходит или остаётся?
-                if random.random() < 0.5:  # 50% шанс уйти
-                    if self.visitor in self.all_sprites:
-                        self.all_sprites.remove(self.visitor)
-                    self.visitor = None
-                else:
-                    # Остаётся и получает новое задание позже
-                    self.quest_active = False
-                    self.has_book = False
-                    self.target_bookshelf = None
-                    self.quest_delay = random.uniform(3.0, 8.0)
-                    self.quest_timer = 0.0
-                    return  # не запускаем таймер нового посетителя
-
-                # Запускаем таймер для следующего посетителя
-                self.visitor_spawn_timer = random.uniform(10.0, 20.0)
+        if dist_to_shelf < INTERACTION_DISTANCE and self.mana >= 10:
+            book = arcade.Sprite(self.book_texture, scale=FLOATING_BOOK_SCALE)
+            book.center_x = self.target_bookshelf.center_x
+            book.center_y = 90  # ← КНИГА НА ВЫСОТЕ 90
+            self.floating_books.append(book)
+            self.object_list.append(book)
+            self.mana -= 10
+            self.quest_active = False
 
     def on_close(self):
         super().on_close()
