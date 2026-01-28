@@ -415,7 +415,7 @@ class GameView(arcade.View):
         if dist_to_shelf < INTERACTION_DISTANCE and self.mana >= 10:
             book = arcade.Sprite(self.book_texture, scale=FLOATING_BOOK_SCALE)
             book.center_x = self.target_bookshelf.center_x
-            book.center_y = 90  # ← КНИГА НА ВЫСОТЕ 90
+            book.center_y = 90
             self.floating_books.append(book)
             self.object_list.append(book)
             self.mana -= 10
