@@ -257,7 +257,7 @@ class GameView(arcade.View):
             anchor_x="right"
         )
 
-        # Шкала маны — ПРОЗРАЧНЫЙ ФОН
+
         mana_bar_width = 200
         mana_bar_height = 20
         mana_bar_x = 20
