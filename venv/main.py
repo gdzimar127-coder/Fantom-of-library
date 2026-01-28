@@ -178,7 +178,7 @@ class GameView(arcade.View):
         self.visitor.target_y = entrance_y
         self.visitor.arrived = False
 
-        self.all_sprites.append(self.visitor)
+        self.object_list.append(self.visitor)
         self.quest_delay = random.uniform(3.0, 8.0)
         self.quest_timer = 0.0
 
