@@ -169,13 +169,6 @@ class GameView(arcade.View):
         self.quest_timer = None
         self.quest_delay = None
 
-        try:
-            self.sound_book_drop = arcade.load_sound("sounds/book_drop.wav")
-            self.sound_power_zone = arcade.load_sound("sounds/power_zone.wav")
-        except:
-            self.sound_book_drop = None
-            self.sound_power_zone = None
-
         # Система уведомлений
         self.notification = None
         self.notification_timer = 0.0
