@@ -6,7 +6,7 @@ import json
 import os
 from pathlib import Path
 
-# Попытка импорта tkinter для диалога выбора файла
+# === Импорт tkinter для диалога выбора файла сохранения ===
 try:
     import tkinter as tk
     from tkinter import filedialog
@@ -14,31 +14,33 @@ try:
 except ImportError:
     TKINTER_AVAILABLE = False
 
-# Константы
-SPEED = 4
+# === ГЛОБАЛЬНЫЕ КОНСТАНТЫ ===
+SPEED = 4                             # Базовая скорость игрока
 SCREEN_WIDTH = 1500
 SCREEN_HEIGHT = 700
-CAMERA_LERP = 0.13
+CAMERA_LERP = 0.13                   # Плавность камеры (0.0–1.0)
 SCREEN_TITLE = "Fantom of library"
 
 BUTTON_WIDTH = 300
 BUTTON_HEIGHT = 80
-VISITOR_SCALE = 6
+VISITOR_SCALE = 6                     # Масштаб спрайта посетителя
 PLAYER_SCALE = 0.35
 TABLE_SCALE = 0.3
 BOOKSHELF_SCALE = 0.25
-FLOATING_BOOK_SCALE = 0.1
+FLOATING_BOOK_SCALE = 0.1             # Очень маленькая книга при сбросе
 POWER_ZONE_SCALE = 0.2
-POWER_ZONE_SIZE = 80
+POWER_ZONE_SIZE = 80                  # Радиус действия зоны силы
 
-INTERACTION_DISTANCE = 80
-MANA_COST_INTERACTION = 20
-DAY_DURATION = 60.0  # 1 игровой день = 60 сек реального времени
+INTERACTION_DISTANCE = 80              # Дистанция взаимодействия с шкафом/книгой
+MANA_COST_INTERACTION = 20            # Стоимость сброса книги
+DAY_DURATION = 60.0                   # 1 игровой день = 60 сек реального времени
 
+# Папка для сохранений (Documents/FantomOfLibrary)
 SAVE_FOLDER = Path.home() / "Documents" / "FantomOfLibrary"
 SAVE_FOLDER.mkdir(parents=True, exist_ok=True)
 
 
+# === КЛАСС: КНОПКА ===
 class Button:
     def __init__(self, text: str, center_x: float, center_y: float,
                  width=BUTTON_WIDTH, height=BUTTON_HEIGHT, color=arcade.color.DARK_GREEN):
@@ -70,6 +72,7 @@ class Button:
         return self.left < x < self.right and self.bottom < y < self.top
 
 
+# === ЭКРАН: ПАУЗА ===
 class PauseView(arcade.View):
     def __init__(self, game_view):
         super().__init__()
@@ -113,24 +116,29 @@ class PauseView(arcade.View):
             self.window.show_view(self.game_view)
 
 
+# === ОСНОВНОЙ ИГРОВОЙ ЭКРАН ===
 class GameView(arcade.View):
     def __init__(self):
         super().__init__()
+        # Загрузка карты из Tiled (.tmx)
         self.cell_size = 64
         map_name = "library.tmx"
         self.tile_map = arcade.load_tilemap(map_name, scaling=1)
 
+        # Получение слоёв карты
         self.walls_behind_list = self.tile_map.sprite_lists.get("walls behind", arcade.SpriteList())
         self.wall_list = self.tile_map.sprite_lists.get("walls", arcade.SpriteList())
         self.object_list = self.tile_map.sprite_lists.get("objects", arcade.SpriteList())
         self.collision_list = self.tile_map.sprite_lists.get("collision", arcade.SpriteList())
         self.power_zone_list = self.tile_map.sprite_lists.get("power_zones", arcade.SpriteList())
 
+        # Списки спрайтов
         self.all_sprites = arcade.SpriteList()
         self.tables = arcade.SpriteList()
         self.bookshelves = arcade.SpriteList()
         self.floating_books = arcade.SpriteList()
 
+        # Загрузка текстур
         self.player_texture_right = arcade.load_texture('ghost.png')
         self.player_texture_left = arcade.load_texture('ghost_l.png')
         self.visitor_texture = arcade.load_texture('visitor_1.png')
@@ -139,6 +147,7 @@ class GameView(arcade.View):
         self.table_texture = arcade.load_texture('table.png')
         self.power_zone_texture = arcade.load_texture('power_zone.png')
 
+        # Камера и размеры карты
         self.world_camera = arcade.camera.Camera2D()
         self.map_width = self.tile_map.width * self.tile_map.tile_width
         self.map_height = self.tile_map.height * self.tile_map.tile_height
@@ -162,12 +171,14 @@ class GameView(arcade.View):
         self.notification = None
         self.notification_timer = 0.0
         self.is_sprinting = False
+
+        # Квест и посетители
         self.quest_active = False
         self.target_bookshelf = None
         self.visitor = None
         self.current_table = None
 
-        # Посетители: 1 в день
+        # Система посетителей: 1 в день
         self.current_day = -1
         self.visitor_spawned_today = False
         self.visitor_spawn_timer = random.uniform(3.0, 6.0)
@@ -181,6 +192,7 @@ class GameView(arcade.View):
         self.setup_objects()
 
     def setup_objects(self):
+        """Расстановка столов, шкафов и зон силы на карте"""
         num_tables = 4
         margin = 150
         usable_width = self.map_width - 2 * margin
@@ -201,6 +213,7 @@ class GameView(arcade.View):
             self.bookshelves.append(shelf)
             self.object_list.append(shelf)
 
+        # Зона силы (ускоряет реген маны)
         zone = arcade.Sprite(self.power_zone_texture, scale=POWER_ZONE_SCALE)
         zone.center_x = self.map_width - 300
         zone.center_y = 130
@@ -208,6 +221,7 @@ class GameView(arcade.View):
         self.object_list.append(zone)
 
     def update_time_system(self, delta_time):
+        """Обновление игрового времени и определение дня/ночи"""
         self.game_time += delta_time
         day_progress = (self.game_time % DAY_DURATION) / DAY_DURATION
         self.is_night = day_progress > 0.5
@@ -215,9 +229,10 @@ class GameView(arcade.View):
         current_day = int(self.game_time // DAY_DURATION)
         if current_day != self.current_day:
             self.current_day = current_day
-            self.visitor_spawned_today = False
+            self.visitor_spawned_today = False  # Разрешить нового посетителя
 
     def get_time_display(self):
+        """Форматирование времени для отображения"""
         total_seconds = int(self.game_time)
         days = total_seconds // int(DAY_DURATION)
         seconds_in_day = total_seconds % int(DAY_DURATION)
@@ -228,10 +243,12 @@ class GameView(arcade.View):
         return f"{day_name} {hours:02d}:00 | {period}"
 
     def on_draw(self):
+        """Отрисовка всего: карты, игрока, HUD"""
         self.clear()
         bg_color = (10, 10, 30) if self.is_night else (40, 40, 60)
         arcade.set_background_color(bg_color)
 
+        # Отрисовка мира
         self.world_camera.use()
         self.walls_behind_list.draw()
         self.wall_list.draw()
@@ -240,6 +257,7 @@ class GameView(arcade.View):
         self.floating_books.draw()
         self.power_zone_list.draw()
 
+        # Подсветка целевого шкафа
         if self.quest_active and self.target_bookshelf:
             pulse = math.sin(self.pulse_time * 6) * 0.3 + 0.7
             radius = 25 + 10 * pulse
@@ -254,8 +272,10 @@ class GameView(arcade.View):
                 radius, arcade.color.YELLOW, 3
             )
 
+        # UI (HUD)
         self.window.default_camera.use()
 
+        # Панель заданий
         panel_width, panel_height = 400, 120
         panel_x, panel_y = 20, SCREEN_HEIGHT - panel_height - 20
         arcade.draw_lrbt_rectangle_filled(panel_x, panel_x + panel_width, panel_y, panel_y + panel_height, (20, 20, 40, 220))
@@ -264,8 +284,10 @@ class GameView(arcade.View):
         if self.quest_active:
             arcade.draw_text("• Уронь книгу из шкафа (E)", panel_x + 30, panel_y + panel_height - 70, arcade.color.WHITE, 14)
 
+        # Счётчики
         arcade.draw_text(f"Очки: {self.score} | Помог: {self.visitors_helped}", SCREEN_WIDTH - 20, SCREEN_HEIGHT - 40, arcade.color.GOLD, 16, anchor_x="right")
 
+        # Шкала маны
         mana_bar_x, mana_bar_y = 20, 60
         fill_width = (self.mana / self.max_mana) * 200
         if fill_width > 0:
@@ -273,34 +295,40 @@ class GameView(arcade.View):
         arcade.draw_lrbt_rectangle_outline(mana_bar_x, mana_bar_x + 200, mana_bar_y, mana_bar_y + 20, arcade.color.WHITE, 2)
         arcade.draw_text(f"Мана: {int(self.mana)}/{int(self.max_mana)}", mana_bar_x + 210, mana_bar_y + 5, arcade.color.WHITE, 14)
 
+        # Время
         arcade.draw_text(self.get_time_display(), SCREEN_WIDTH - 20, 20, (200, 200, 255), 16, anchor_x="right")
 
+        # Подсказки управления
         hints = ["WASD - движение", "SHIFT - бег", "E - взаимодействие", "ESC - пауза"]
         for i, hint in enumerate(hints):
             arcade.draw_text(hint, SCREEN_WIDTH - 20, SCREEN_HEIGHT - 80 - i * 20, arcade.color.GRAY, 12, anchor_x="right")
 
+        # Уведомления (например, "Игра сохранена!")
         if self.notification and self.notification_timer > 0:
             arcade.draw_text(self.notification, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2 + 200, arcade.color.GREEN, 28, anchor_x="center", bold=True)
 
     def on_update(self, delta_time: float):
+        """Главная игровая логика: обновление всех объектов"""
         self.update_time_system(delta_time)
 
+        # Таймер уведомлений
         if self.notification_timer > 0:
             self.notification_timer -= delta_time
             if self.notification_timer <= 0:
                 self.notification = None
 
-        # Спринт
+        # Управление скоростью (спринт на SHIFT)
         current_speed = SPEED * 2 if self.is_sprinting else SPEED
         if self.player.change_x != 0:
             self.player.change_x = current_speed if self.player.change_x > 0 else -current_speed
         if self.player.change_y != 0:
             self.player.change_y = current_speed if self.player.change_y > 0 else -current_speed
 
+        # Расход маны при беге
         if self.is_sprinting:
             self.mana = max(0.0, self.mana - 2.0 * delta_time)
 
-        # Реген маны
+        # Регенерация маны (в 3 раза быстрее в зоне силы)
         regen_mult = 1.0
         for zone in self.power_zone_list:
             dist = math.hypot(self.player.center_x - zone.center_x, self.player.center_y - zone.center_y)
@@ -309,8 +337,8 @@ class GameView(arcade.View):
                 break
         self.mana = min(self.max_mana, self.mana + self.mana_regen_rate * regen_mult * delta_time)
 
+        # Физика и камера
         self.physics_engine.update()
-
         cam_x, cam_y = self.world_camera.position
         target_x, target_y = self.player.center_x, self.player.center_y
         new_x = arcade.math.lerp(cam_x, target_x, CAMERA_LERP)
@@ -321,17 +349,17 @@ class GameView(arcade.View):
         new_y = max(half_h, min(self.map_height - half_h, new_y))
         self.world_camera.position = (new_x, new_y)
 
-        # Спавн посетителя (1 в день)
+        # Спавн одного посетителя в день
         if not self.is_night and not self.visitor_spawned_today:
             self.visitor_spawn_timer -= delta_time
             if self.visitor_spawn_timer <= 0:
                 self.spawn_visitor()
                 self.visitor_spawned_today = True
-                self.visitor_spawn_timer = float('inf')
+                self.visitor_spawn_timer = float('inf')  # Больше не спавним сегодня
 
-        # === ЛОГИКА ПОСЕТИТЕЛЯ ===
+        # ЛОГИКА ПОСЕТИТЕЛЯ
         if self.visitor:
-            self.visitor.center_y = 118
+            self.visitor.center_y = 118  # Фиксированная Y-координата
 
             if self.visitor.state == "arriving":
                 dx = self.visitor.target_x - self.visitor.center_x
@@ -341,6 +369,7 @@ class GameView(arcade.View):
                     self.visitor.center_x += math.copysign(100 * delta_time, dx)
 
             elif self.visitor.state == "waiting":
+                # Ищем ближайшую книгу
                 closest_book = None
                 min_dist = float('inf')
                 for book in self.floating_books:
@@ -362,7 +391,7 @@ class GameView(arcade.View):
                     self.visitor.state = "going_to_book"
                     self.visitor.target_x = closest_book.center_x
                 else:
-                    # Запускаем квест, если его ещё нет
+                    # Ждём, пока игрок сбросит книгу
                     if not self.quest_active and self.quest_delay is not None:
                         self.quest_timer += delta_time
                         if self.quest_timer >= self.quest_delay:
@@ -372,6 +401,7 @@ class GameView(arcade.View):
             elif self.visitor.state == "going_to_book":
                 dx = self.visitor.target_x - self.visitor.center_x
                 if abs(dx) < 5:
+                    # Нашёл книгу — берёт
                     for book in self.floating_books:
                         dist = math.hypot(self.visitor.center_x - book.center_x, self.visitor.center_y - book.center_y)
                         if dist < INTERACTION_DISTANCE:
@@ -390,18 +420,19 @@ class GameView(arcade.View):
                 dx = self.visitor.target_x - self.visitor.center_x
                 if abs(dx) < 5:
                     self.visitor.state = "post_interaction_wait"
-                    self.visitor.wait_end_time = time.time() + 5
+                    self.visitor.wait_end_time = time.time() + 5  # Ждёт 5 секунд
                 else:
                     self.visitor.center_x += math.copysign(100 * delta_time, dx)
 
             elif self.visitor.state == "post_interaction_wait":
                 if time.time() >= self.visitor.wait_end_time:
                     self.visitor.state = "leaving"
-                    self.visitor.target_x = 50
+                    self.visitor.target_x = 50  # Выход слева
 
             elif self.visitor.state == "leaving":
                 dx = self.visitor.target_x - self.visitor.center_x
                 if abs(dx) < 5:
+                    # Ушёл — удаляем
                     self.visitor.remove_from_sprite_lists()
                     if self.visitor in self.object_list:
                         self.object_list.remove(self.visitor)
@@ -417,6 +448,7 @@ class GameView(arcade.View):
         self.pulse_time += delta_time
 
     def on_key_press(self, key, modifiers):
+        """Обработка нажатий клавиш"""
         if key == arcade.key.W:
             self.player.change_y = SPEED
         elif key == arcade.key.S:
@@ -436,6 +468,7 @@ class GameView(arcade.View):
             self.window.show_view(pause)
 
     def on_key_release(self, key, modifiers):
+        """Обработка отпускания клавиш"""
         if key in (arcade.key.W, arcade.key.S):
             self.player.change_y = 0
         if key in (arcade.key.A, arcade.key.D):
@@ -444,6 +477,7 @@ class GameView(arcade.View):
             self.is_sprinting = False
 
     def handle_interaction(self):
+        """Сброс книги из шкафа (требует ману)"""
         if not self.quest_active or self.target_bookshelf is None:
             return
 
@@ -457,15 +491,16 @@ class GameView(arcade.View):
             book.center_x = self.target_bookshelf.center_x
             book.center_y = 90
             self.floating_books.append(book)
-            self.object_list.append(book)
+            self.object_list.append(book)  # Чтобы рисовалась вместе с объектами
             self.mana -= MANA_COST_INTERACTION
             self.quest_active = False
 
-            # 🔊 Только при сбросе!
+            # Проигрываем звук только при сбросе книги
             if self.sound_book_drop:
                 arcade.play_sound(self.sound_book_drop)
 
     def spawn_visitor(self):
+        """Создание нового посетителя у входа"""
         if self.visitor is not None:
             return
 
@@ -475,27 +510,27 @@ class GameView(arcade.View):
 
         table = random.choice(available_tables)
         visitor = arcade.Sprite(self.visitor_texture, scale=VISITOR_SCALE)
-        visitor.center_x = 100
+        visitor.center_x = 100  # Вход слева
         visitor.center_y = 118
         visitor.state = "arriving"
         visitor.target_x = table.center_x
         self.current_table = table
         self.object_list.append(visitor)
         self.visitor = visitor
-
-        # Сбрасываем квест и запускаем таймер
         self.quest_active = False
         self.target_bookshelf = None
         self.quest_delay = random.uniform(3.0, 8.0)
         self.quest_timer = 0.0
 
     def start_quest(self):
+        """Активация квеста: выбрать шкаф для книги"""
         if self.visitor is None or self.visitor.state != "waiting":
             return
         self.quest_active = True
         self.target_bookshelf = random.choice(self.bookshelves)
 
     def save_game(self):
+        """Сохранение прогресса в JSON"""
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         filename = f"save_{timestamp}.json"
         filepath = SAVE_FOLDER / filename
@@ -512,9 +547,10 @@ class GameView(arcade.View):
             with open(filepath, "w", encoding="utf-8") as f:
                 json.dump(save_data, f, indent=2)
         except Exception:
-            pass
+            pass  # Игнорируем ошибки
 
     def load_game(self):
+        """Загрузка прогресса через системный диалог"""
         if not TKINTER_AVAILABLE:
             return False
 
@@ -543,6 +579,7 @@ class GameView(arcade.View):
             return False
 
 
+# === ГЛАВНОЕ МЕНЮ ===
 class MainMenu(arcade.View):
     def __init__(self):
         super().__init__()
@@ -554,28 +591,17 @@ class MainMenu(arcade.View):
 
     def on_draw(self):
         self.clear(arcade.color.DARK_BLUE)
+        # Анимированный фон (звёзды/пыль)
         for i in range(20):
             x = random.randint(0, SCREEN_WIDTH)
             y = random.randint(0, SCREEN_HEIGHT)
             size = random.randint(1, 3)
             arcade.draw_circle_filled(x, y, size, (100, 100, 150, 100))
 
-        arcade.draw_text(
-            "FANTOM OF LIBRARY",
-            SCREEN_WIDTH / 2,
-            SCREEN_HEIGHT - 100,
-            arcade.color.WHITE,
-            font_size=50,
-            anchor_x="center"
-        )
-        arcade.draw_text(
-            "Защитник знаний в вечной тишине...",
-            SCREEN_WIDTH / 2,
-            SCREEN_HEIGHT - 140,
-            arcade.color.GRAY,
-            font_size=20,
-            anchor_x="center"
-        )
+        arcade.draw_text("FANTOM OF LIBRARY", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 100,
+                         arcade.color.WHITE, font_size=50, anchor_x="center")
+        arcade.draw_text("Защитник знаний в вечной тишине...", SCREEN_WIDTH / 2, SCREEN_HEIGHT - 140,
+                         arcade.color.GRAY, font_size=20, anchor_x="center")
 
         for button in self.buttons:
             button.draw()
@@ -596,6 +622,7 @@ class MainMenu(arcade.View):
                     arcade.exit()
 
 
+# === ТОЧКА ВХОДА ===
 def main():
     window = arcade.Window(SCREEN_WIDTH, SCREEN_HEIGHT, SCREEN_TITLE)
     main_menu = MainMenu()
